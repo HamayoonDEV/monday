@@ -62,7 +62,7 @@ const controller = {
       user = await userToRegister.save();
       //genrate tokens
       accessToken = JWTservice.signAccessToken({ _id: user._id }, "30m");
-      refreshToken = JWTservice.signAccessToken({ _id: user._id }, "60m");
+      refreshToken = JWTservice.signRefreshToken({ _id: user._id }, "60m");
     } catch (error) {
       return next(error);
     }
@@ -156,8 +156,9 @@ const controller = {
   async logout(req, res, next) {
     //delete refrehToken from database
     const { refreshToken } = req.cookies;
+    let user;
     try {
-      await RefreshToken.deleteOne({ token: refreshToken });
+      user = await RefreshToken.deleteOne({ token: refreshToken });
     } catch (error) {
       return next(error);
     }
@@ -166,6 +167,68 @@ const controller = {
     res.clearCookie("refreshToken");
     //send response
     res.status(200).json({ user: null, auth: false });
+  },
+
+  //Refresh controller
+  async refresh(req, res, next) {
+    //get refreshTokes from cookies
+
+    const orignalRefreshTokens = req.cookies.refreshToken;
+    //verify refresh tokens
+    let _id;
+    try {
+      _id = JWTservice.verifyRefreshToken(orignalRefreshTokens)._id;
+    } catch (e) {
+      const error = {
+        status: 401,
+        message: "unAuthorized!!",
+      };
+      return next(error);
+    }
+    //match user id and refresh token
+    try {
+      const match = await RefreshToken.findOne({
+        _id: _id,
+        token: orignalRefreshTokens,
+      });
+      if (!match) {
+        const error = {
+          status: 401,
+          message: "unAuthorized!!",
+        };
+        return next(error);
+      }
+    } catch (error) {
+      return next(error);
+    }
+    //genrate refresh tokens
+    try {
+      const accessToken = JWTservice.signAccessToken({ _id: _id }, "30m");
+      const refrehToken = JWTservice.signRefreshToken({ _id: _id }, "60m");
+      //update refresh token in db:
+      await RefreshToken.updateOne(
+        {
+          _id: _id,
+        },
+        {
+          token: refrehToken,
+        }
+      );
+      //sending tokens to the cookies
+      res.cookie("accessToken", accessToken, {
+        maxAge: 1000 * 60 * 60 * 24,
+        httpOnly: true,
+      });
+      res.cookie("refreshToken", refrehToken, {
+        maxAge: 1000 * 60 * 60 * 24,
+        httpOnly: true,
+      });
+    } catch (error) {
+      return next(error);
+    }
+    const user = await User.findOne({ _id });
+    const userDto = new UserDTO(user);
+    res.status(200).json({ user: userDto });
   },
 };
 export default controller;

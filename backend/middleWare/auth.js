@@ -8,7 +8,7 @@ const auth = async (req, res, next) => {
 
   if (!accessToken || !refreshToken) {
     const error = {
-      status: 409,
+      status: 401,
       message: "unAuthorized!!",
     };
     return next(error);
